@@ -3,3 +3,8 @@
 *.ipynb_checkpoints
 *.json
 *.pth.tar
+*.pkl
+temp/
+vocab/
+runs/
+jupyter/

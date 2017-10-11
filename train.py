@@ -1,4 +1,3 @@
-import pickle
 import os
 import time
 import shutil
@@ -14,14 +13,15 @@ import logging
 import tensorboard_logger as tb_logger
 
 import argparse
+from tokenizers import WordTokenizer
 
 
 def main():
     # Hyper Parameters
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_path', default='/w/31/faghri/vsepp_data/',
+    parser.add_argument('--data_path', default='/A/VSE/data/',
                         help='path to datasets')
-    parser.add_argument('--data_name', default='precomp',
+    parser.add_argument('--data_name', default='coco_precomp',
                         help='{coco,f8k,f30k,10crop}_precomp|coco|f8k|f30k')
     parser.add_argument('--vocab_path', default='./vocab/',
                         help='Path to saved vocabulary pickle files.')
@@ -78,14 +78,20 @@ def main():
     logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
     tb_logger.configure(opt.logger_name, flush_secs=5)
 
+    ''' ----- begin old code ---- '''
     # Load Vocabulary Wrapper
-    vocab = pickle.load(open(os.path.join(
-        opt.vocab_path, '%s_vocab.pkl' % opt.data_name), 'rb'))
-    opt.vocab_size = len(vocab)
+    # vocab = pickle.load(open(os.path.join(
+    #     opt.vocab_path, '%s_vocab.pkl' % opt.data_name), 'rb'))
+    # opt.vocab_size = len(vocab)
+    ''' -----  end old code  ---- '''
+
+    vocab_path = os.path.join(opt.vocab_path, '%s_vocab.pkl' % opt.data_name)
+    tokenizer = WordTokenizer(vocab_path)
+    opt.vocab_size = tokenizer.vocab_size
 
     # Load data loaders
     train_loader, val_loader = data.get_loaders(
-        opt.data_name, vocab, opt.crop_size, opt.batch_size, opt.workers, opt)
+        opt.data_name, tokenizer, opt.crop_size, opt.batch_size, opt.workers, opt)
 
     # Construct the model
     model = VSE(opt)

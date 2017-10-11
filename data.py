@@ -2,7 +2,6 @@ import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
 import os
-import nltk
 from PIL import Image
 from pycocotools.coco import COCO
 import numpy as np
@@ -78,12 +77,12 @@ def get_paths(path, name='coco', use_restval=False):
 class CocoDataset(data.Dataset):
     """COCO Custom Dataset compatible with torch.utils.data.DataLoader."""
 
-    def __init__(self, root, json, vocab, transform=None, ids=None):
+    def __init__(self, root, json, tokenizer, transform=None, ids=None):
         """
         Args:
             root: image directory.
             json: coco annotation file path.
-            vocab: vocabulary wrapper.
+            tokenizer: tokenizer wrapper.
             transform: transformer for image.
         """
         self.root = root
@@ -105,26 +104,20 @@ class CocoDataset(data.Dataset):
             self.ids = list(self.ids[0]) + list(self.ids[1])
         else:
             self.bp = len(self.ids)
-        self.vocab = vocab
+        self.tokenizer = tokenizer
         self.transform = transform
 
     def __getitem__(self, index):
         """This function returns a tuple that is further passed to collate_fn
         """
-        vocab = self.vocab
+        tokenizer = self.tokenizer
         root, caption, img_id, path, image = self.get_raw_item(index)
 
         if self.transform is not None:
             image = self.transform(image)
 
         # Convert caption (string) to word ids.
-        tokens = nltk.tokenize.word_tokenize(
-            str(caption).lower().decode('utf-8'))
-        caption = []
-        caption.append(vocab('<start>'))
-        caption.extend([vocab(token) for token in tokens])
-        caption.append(vocab('<end>'))
-        target = torch.Tensor(caption)
+        tokenizer.tokenize_text(caption)
         return image, target, index, img_id
 
     def get_raw_item(self, index):
@@ -151,9 +144,9 @@ class FlickrDataset(data.Dataset):
     Dataset loader for Flickr30k and Flickr8k full datasets.
     """
 
-    def __init__(self, root, json, split, vocab, transform=None):
+    def __init__(self, root, json, split, tokenizer, transform=None):
         self.root = root
-        self.vocab = vocab
+        self.tokenizer = tokenizer
         self.split = split
         self.transform = transform
         self.dataset = jsonmod.load(open(json, 'r'))['images']
@@ -165,7 +158,7 @@ class FlickrDataset(data.Dataset):
     def __getitem__(self, index):
         """This function returns a tuple that is further passed to collate_fn
         """
-        vocab = self.vocab
+        tokenizer = self.tokenizer
         root = self.root
         ann_id = self.ids[index]
         img_id = ann_id[0]
@@ -177,13 +170,7 @@ class FlickrDataset(data.Dataset):
             image = self.transform(image)
 
         # Convert caption (string) to word ids.
-        tokens = nltk.tokenize.word_tokenize(
-            str(caption).lower().decode('utf-8'))
-        caption = []
-        caption.append(vocab('<start>'))
-        caption.extend([vocab(token) for token in tokens])
-        caption.append(vocab('<end>'))
-        target = torch.Tensor(caption)
+        target = tokenizer.tokenize_text(caption)
         return image, target, index, img_id
 
     def __len__(self):
@@ -196,8 +183,8 @@ class PrecompDataset(data.Dataset):
     Possible options: f8k, f30k, coco, 10crop
     """
 
-    def __init__(self, data_path, data_split, vocab):
-        self.vocab = vocab
+    def __init__(self, data_path, data_split, tokenizer):
+        self.tokenizer = tokenizer
         loc = data_path + '/'
 
         # Captions
@@ -223,16 +210,10 @@ class PrecompDataset(data.Dataset):
         img_id = index/self.im_div
         image = torch.Tensor(self.images[img_id])
         caption = self.captions[index]
-        vocab = self.vocab
+        tokenizer = self.tokenizer
 
         # Convert caption (string) to word ids.
-        tokens = nltk.tokenize.word_tokenize(
-            str(caption).lower().decode('utf-8'))
-        caption = []
-        caption.append(vocab('<start>'))
-        caption.extend([vocab(token) for token in tokens])
-        caption.append(vocab('<end>'))
-        target = torch.Tensor(caption)
+        target = tokenizer.tokenize_text(caption)
         return image, target, index, img_id
 
     def __len__(self):
@@ -268,7 +249,7 @@ def collate_fn(data):
     return images, targets, lengths, ids
 
 
-def get_loader_single(data_name, split, root, json, vocab, transform,
+def get_loader_single(data_name, split, root, json, tokenizer, transform,
                       batch_size=100, shuffle=True,
                       num_workers=2, ids=None, collate_fn=collate_fn):
     """Returns torch.utils.data.DataLoader for custom coco dataset."""
@@ -276,13 +257,13 @@ def get_loader_single(data_name, split, root, json, vocab, transform,
         # COCO custom dataset
         dataset = CocoDataset(root=root,
                               json=json,
-                              vocab=vocab,
+                              tokenizer=tokenizer,
                               transform=transform, ids=ids)
     elif 'f8k' in data_name or 'f30k' in data_name:
         dataset = FlickrDataset(root=root,
                                 split=split,
                                 json=json,
-                                vocab=vocab,
+                                tokenizer=tokenizer,
                                 transform=transform)
 
     # Data loader
@@ -295,10 +276,10 @@ def get_loader_single(data_name, split, root, json, vocab, transform,
     return data_loader
 
 
-def get_precomp_loader(data_path, data_split, vocab, opt, batch_size=100,
+def get_precomp_loader(data_path, data_split, tokenizer, opt, batch_size=100,
                        shuffle=True, num_workers=2):
     """Returns torch.utils.data.DataLoader for custom coco dataset."""
-    dset = PrecompDataset(data_path, data_split, vocab)
+    dset = PrecompDataset(data_path, data_split, tokenizer)
 
     data_loader = torch.utils.data.DataLoader(dataset=dset,
                                               batch_size=batch_size,
@@ -325,12 +306,12 @@ def get_transform(data_name, split_name, opt):
     return transform
 
 
-def get_loaders(data_name, vocab, crop_size, batch_size, workers, opt):
+def get_loaders(data_name, tokenizer, crop_size, batch_size, workers, opt):
     dpath = os.path.join(opt.data_path, data_name)
     if opt.data_name.endswith('_precomp'):
-        train_loader = get_precomp_loader(dpath, 'train', vocab, opt,
+        train_loader = get_precomp_loader(dpath, 'train', tokenizer, opt,
                                           batch_size, True, workers)
-        val_loader = get_precomp_loader(dpath, 'dev', vocab, opt,
+        val_loader = get_precomp_loader(dpath, 'dev', tokenizer, opt,
                                         batch_size, False, workers)
     else:
         # Build Dataset Loader
@@ -340,7 +321,7 @@ def get_loaders(data_name, vocab, crop_size, batch_size, workers, opt):
         train_loader = get_loader_single(opt.data_name, 'train',
                                          roots['train']['img'],
                                          roots['train']['cap'],
-                                         vocab, transform, ids=ids['train'],
+                                         tokenizer, transform, ids=ids['train'],
                                          batch_size=batch_size, shuffle=True,
                                          num_workers=workers,
                                          collate_fn=collate_fn)
@@ -349,7 +330,7 @@ def get_loaders(data_name, vocab, crop_size, batch_size, workers, opt):
         val_loader = get_loader_single(opt.data_name, 'val',
                                        roots['val']['img'],
                                        roots['val']['cap'],
-                                       vocab, transform, ids=ids['val'],
+                                       tokenizer, transform, ids=ids['val'],
                                        batch_size=batch_size, shuffle=False,
                                        num_workers=workers,
                                        collate_fn=collate_fn)
@@ -357,11 +338,11 @@ def get_loaders(data_name, vocab, crop_size, batch_size, workers, opt):
     return train_loader, val_loader
 
 
-def get_test_loader(split_name, data_name, vocab, crop_size, batch_size,
+def get_test_loader(split_name, data_name, tokenizer, crop_size, batch_size,
                     workers, opt):
     dpath = os.path.join(opt.data_path, data_name)
     if opt.data_name.endswith('_precomp'):
-        test_loader = get_precomp_loader(dpath, split_name, vocab, opt,
+        test_loader = get_precomp_loader(dpath, split_name, tokenizer, opt,
                                          batch_size, False, workers)
     else:
         # Build Dataset Loader
@@ -371,7 +352,7 @@ def get_test_loader(split_name, data_name, vocab, crop_size, batch_size,
         test_loader = get_loader_single(opt.data_name, split_name,
                                         roots[split_name]['img'],
                                         roots[split_name]['cap'],
-                                        vocab, transform, ids=ids[split_name],
+                                        tokenizer, transform, ids=ids[split_name],
                                         batch_size=batch_size, shuffle=False,
                                         num_workers=workers,
                                         collate_fn=collate_fn)
