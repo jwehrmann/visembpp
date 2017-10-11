@@ -1,6 +1,7 @@
 import torch
 import pickle
 import nltk
+from preprocessing import Text2Char
 
 class TokenizerBase(object):
 
@@ -38,3 +39,20 @@ class WordTokenizer(TokenizerBase):
 
     def tokenize_texts(self, texts):
         return texts
+
+
+class CharacterTokenizer(TokenizerBase):
+
+    def __init__(self):
+        
+        super(CharacterTokenizer, self).__init__()
+        self.encoder = Text2Char()        
+
+    def tokenize_text(self, text):
+        caption = self.encoder.encode_text(text)
+        target = torch.Tensor(caption)
+        return target
+
+    def tokenize_texts(self, texts):
+        return texts
+

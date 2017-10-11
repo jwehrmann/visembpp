@@ -7,13 +7,18 @@ import torch
 import data
 from vocab import Vocabulary  # NOQA
 from model import VSE
-from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data
+from evaluation import i2t
+from evaluation import t2i
+from evaluation import AverageMeter
+from evaluation import LogCollector
+from evaluation import encode_data
 
 import logging
 import tensorboard_logger as tb_logger
 
 import argparse
 from tokenizers import WordTokenizer
+from tokenizers import CharacterTokenizer
 
 
 def main():
@@ -85,9 +90,13 @@ def main():
     # opt.vocab_size = len(vocab)
     ''' -----  end old code  ---- '''
 
-    vocab_path = os.path.join(opt.vocab_path, '%s_vocab.pkl' % opt.data_name)
-    tokenizer = WordTokenizer(vocab_path)
-    opt.vocab_size = tokenizer.vocab_size
+    if opt.vocab_path.startswith('char'):
+        tokenizer = CharacterTokenizer()
+        opt.vocab_size = tokenizer.encoder.n_alphabet 
+    else:
+        vocab_path = os.path.join(opt.vocab_path, '%s_vocab.pkl' % opt.data_name)
+        tokenizer = WordTokenizer(vocab_path)
+        opt.vocab_size = tokenizer.vocab_size
 
     # Load data loaders
     train_loader, val_loader = data.get_loaders(
